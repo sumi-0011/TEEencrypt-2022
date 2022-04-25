@@ -119,6 +119,7 @@ int main(int argc, char *argv[])
 		fgets(ciphertext, sizeof(ciphertext), fp_read_cipher_pt);
 		fgets(decryptedkey, sizeof(decryptedkey), fp_read_cipher_pt);
 		printf("ciphertext => %s\n", ciphertext);
+		fclose(fp_read_cipher_pt);
 
     //파일에서 읽은 암호화된 랜덤키를 메모리에 저장
 		memcpy(op.params[0].tmpref.buffer, decryptedkey, 1);  
@@ -142,6 +143,8 @@ int main(int argc, char *argv[])
     //복호화한 평문을 파일에 저장
 		FILE *fp_write_plain_pt = fopen("plain_result.txt","w");
 		fputs(plaintext, fp_write_plain_pt);
+		fclose(fp_write_plain_pt);
+
 		printf("===========================================================\n");
 	}
 

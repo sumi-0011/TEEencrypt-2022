@@ -27,13 +27,13 @@
 
 #include <tee_internal_api.h>
 #include <tee_internal_api_extensions.h>
-
+#include <string.h>
 #include <TEEencrypt_ta.h>
+int root_key;
+int randomNumber[10] = {0,};
+int randomKey[1] = {0};
+char decryptedRandomkey[2] = {0,0};
 
-/*
- * Called when the instance of the TA is created. This is the first call in
- * the TA.
- */
 TEE_Result TA_CreateEntryPoint(void)
 {
 	DMSG("has been called");
@@ -41,21 +41,11 @@ TEE_Result TA_CreateEntryPoint(void)
 	return TEE_SUCCESS;
 }
 
-/*
- * Called when the instance of the TA is destroyed if the TA has not
- * crashed or panicked. This is the last call in the TA.
- */
 void TA_DestroyEntryPoint(void)
 {
 	DMSG("has been called");
 }
 
-/*
- * Called when a new session is opened to the TA. *sess_ctx can be updated
- * with a value to be able to identify this session in subsequent calls to the
- * TA. In this function you will normally do the global initialization for the
- * TA.
- */
 TEE_Result TA_OpenSessionEntryPoint(uint32_t param_types,
 		TEE_Param __maybe_unused params[4],
 		void __maybe_unused **sess_ctx)
@@ -84,10 +74,7 @@ TEE_Result TA_OpenSessionEntryPoint(uint32_t param_types,
 	return TEE_SUCCESS;
 }
 
-/*
- * Called when a session is closed, sess_ctx hold the value that was
- * assigned by TA_OpenSessionEntryPoint().
- */
+
 void TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx)
 {
 	(void)&sess_ctx; /* Unused parameter */
@@ -97,19 +84,35 @@ void TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx)
 static TEE_Result enc_value(uint32_t param_types,
 	TEE_Param params[4])
 {
-	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INOUT,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE,
-						   TEE_PARAM_TYPE_NONE);
+  //평문을 랜덤키를 이용하여 암호화하는 메소드
 
-	DMSG("has been called");
+	char * in = (char *)params[0].memref.buffer;   //메모리에서 평문 데이터를 가져옴
+	int in_len = strlen (params[0].memref.buffer); 
+	char encrypted [64]={0,};
 
-	if (param_types != exp_param_types)
-		return TEE_ERROR_BAD_PARAMETERS;
+  //DMSG은 출력문
+	DMSG("========================Encryption========================\n");
+	DMSG ("Plaintext :  %s", in);
+	memcpy(encrypted, in, in_len);
 
-	IMSG("Got value: %u from NW", params[0].value.a);
-	params[0].value.a++;
-	IMSG("Increase value to: %u", params[0].value.a);
+  //생성한 랜덤키를 이용하여 평문을 암호화
+	for(int i=0; i<in_len;i++){
+		if(encrypted[i]>='a' && encrypted[i] <='z'){
+			encrypted[i] -= 'a';
+			encrypted[i] += randomKey[0]; 
+			encrypted[i] = encrypted[i] % 26;
+			encrypted[i] += 'a';
+		}
+		else if (encrypted[i] >= 'A' && encrypted[i] <= 'Z') {
+			encrypted[i] -= 'A';
+			encrypted[i] += randomKey[0];
+			encrypted[i] = encrypted[i] % 26;
+			encrypted[i] += 'A';
+		}
+	}
+
+	DMSG ("Ciphertext :  %s", encrypted);
+	memcpy(in, encrypted, in_len);  //메모리에 랜덤키를 이용하여 안호화한 암호문을 저장
 
 	return TEE_SUCCESS;
 }
@@ -117,20 +120,114 @@ static TEE_Result enc_value(uint32_t param_types,
 static TEE_Result dec_value(uint32_t param_types,
 	TEE_Param params[4])
 {
+  //랜덤키를 이용하여 평문으로 복호화하는 메소드
+	char * in = (char *)params[0].memref.buffer;  //암호문 전달
+	int in_len = strlen (params[0].memref.buffer);
+	char decrypted[64]={0,}; 
+
+	DMSG("========================Decryption========================\n");
+	DMSG ("Ciphertext :  %s", in);
+	DMSG ("randomKey :  %s", randomKey[0]);
+	memcpy(decrypted, in, in_len);
+	DMSG ("in is :  %s", in);
+
+  //복호화된 랜덤키를 이용하여 암호문을 복호화 => 평문
+	for(int i=0; i<in_len;i++){
+		if(decrypted[i]>='a' && decrypted[i] <='z'){
+			decrypted[i] -= 'a';
+			decrypted[i] -= decryptedRandomkey[0];
+			decrypted[i] += 26;
+			decrypted[i] = decrypted[i] % 26;
+			decrypted[i] += 'a';
+		}
+		else if (decrypted[i] >= 'A' && decrypted[i] <= 'Z') {
+			decrypted[i] -= 'A';
+			decrypted[i] -= decryptedRandomkey[0];
+			decrypted[i] += 26;
+			decrypted[i] = decrypted[i] % 26;
+			decrypted[i] += 'A';
+		}
+	}
+
+	DMSG ("Plaintext :  %s", decrypted);
+	memcpy(in, decrypted, in_len);  //메모리에 복호화된 평문 결과값을 저장
+
+	return TEE_SUCCESS;
+}
+
+static TEE_Result randomkey_get()
+{
+  //랜덤키 생성 메소드
+	do{
+		TEE_GenerateRandom(randomNumber, sizeof(randomNumber));
+	} while(randomNumber[0] <= 0);
+
+	randomKey[0] = randomNumber[0] % 25 + 1;  //1~25사이의 랜덤키를 생성
+	
+	DMSG("=====================Get RandomKey=====================\n");
+	DMSG ("random key =>  %d\n", randomKey[0]);
+
+	return TEE_SUCCESS;
+
+}
+
+static TEE_Result randomkey_enc(uint32_t param_types,
+	TEE_Param params[4])
+{
+  //랜덤키를 root key를 이용해 암호화하는 메소드
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_VALUE_INOUT,
 						   TEE_PARAM_TYPE_NONE,
 						   TEE_PARAM_TYPE_NONE,
 						   TEE_PARAM_TYPE_NONE);
 
-	DMSG("has been called");
+	char * in = (char *)params[0].memref.buffer;  
+	int in_len = strlen (params[0].memref.buffer);
 
-	if (param_types != exp_param_types)
-		return TEE_ERROR_BAD_PARAMETERS;
+	char encryptedRandomkey[1]={0};
 
-	IMSG("Got value: %u from NW", params[0].value.a);
-	params[0].value.a--;
-	IMSG("Decrease value to: %u", params[0].value.a);
+	DMSG("===================Encryption RandomKey===================\n");
+	DMSG ("rootkey =>  %d\n", root_key);
+	DMSG ("randomkey =>   %d\n", randomKey[0]);
 
+	encryptedRandomkey[0] = 'A' + randomKey[0];
+	DMSG("alphabet =>  %c\n", encryptedRandomkey[0]);
+
+  //root key를 이용하여 random key를 암호화
+	if (encryptedRandomkey[0] >= 'A' && encryptedRandomkey[0] <= 'Z') {
+			encryptedRandomkey[0] -= 'A';
+			encryptedRandomkey[0] += root_key;
+			encryptedRandomkey[0] = encryptedRandomkey[0] % 26;
+			encryptedRandomkey[0] += 'A';
+		}
+
+	DMSG("encrypted ==>  %c\n", encryptedRandomkey[0]);
+	
+  //암호화된 random key를 메모리에 저장
+	memcpy(in, encryptedRandomkey, 1);
+	return TEE_SUCCESS;
+}
+
+static TEE_Result randomkey_dec(uint32_t param_types,
+	TEE_Param params[4])
+{
+  //암호화된 랜덤키를 root key로 복호화하는 메소드
+
+	char * in = (char *)params[0].memref.buffer;  //암호화된 랜덤키 정보
+	memcpy(decryptedRandomkey, in, 1);
+
+	DMSG("===================Decryption RandomKey===================\n");
+	DMSG ("decryptedRandomkey is :  %s", decryptedRandomkey);
+  //root를 이용하여 복호화
+	if (decryptedRandomkey[0] >= 'A' && decryptedRandomkey[0] <= 'Z') {
+			decryptedRandomkey[0] -= 'A';
+			decryptedRandomkey[0] -= root_key;
+			decryptedRandomkey[0] += 26;
+			decryptedRandomkey[0] = decryptedRandomkey[0] % 26;
+			
+		}
+
+  //복호화한 랜덤키를 메소드에 저장
+	memcpy(in, decryptedRandomkey, 1);  
 	return TEE_SUCCESS;
 }
 /*
@@ -143,6 +240,7 @@ TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
 			uint32_t param_types, TEE_Param params[4])
 {
 	(void)&sess_ctx; /* Unused parameter */
+	root_key = 25;
 
 	switch (cmd_id) {
 	case TA_TEEencrypt_CMD_ENC_VALUE:
@@ -150,7 +248,11 @@ TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,
 	case TA_TEEencrypt_CMD_DEC_VALUE:
 		return dec_value(param_types, params);
 	case TA_TEEencrypt_CMD_RANDOMKEY_GET:
-		return dec_value(param_types, params);
+		return randomkey_get();
+	case TA_TEEencrypt_CMD_RANDOMKEY_ENC:
+		return randomkey_enc(param_types, params);
+	case TA_TEEencrypt_CMD_RANDOMKEY_DEC:
+		return randomkey_dec(param_types, params);
 	default:
 		return TEE_ERROR_BAD_PARAMETERS;
 	}
