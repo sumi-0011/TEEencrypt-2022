@@ -124,12 +124,12 @@ static TEE_Result dec_value(uint32_t param_types,
 	char * in = (char *)params[0].memref.buffer;  //암호문 전달
 	int in_len = strlen (params[0].memref.buffer);
 	char decrypted[64]={0,}; 
-
+	memcpy(decrypted, in, in_len);
 	DMSG("========================Decryption========================\n");
 	DMSG ("Ciphertext :  %s", in);
 	DMSG ("randomKey :  %s", randomKey[0]);
-	memcpy(decrypted, in, in_len);
 	DMSG ("in is :  %s", in);
+
 
   //복호화된 랜덤키를 이용하여 암호문을 복호화 => 평문
 	for(int i=0; i<in_len;i++){

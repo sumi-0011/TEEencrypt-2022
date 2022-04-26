@@ -78,10 +78,11 @@ int main(int argc, char *argv[])
 		fgets(plaintext, sizeof(plaintext), fp_read_pt);  //평문 파일을 읽어 plaintext에 저장
 		fclose(fp_read_pt);
 		printf("plaintext => %s\n", plaintext);
-		memcpy(op.params[0].tmpref.buffer, plaintext, len); //plaintext의 값을 메모리에 저장
     //랜덤키 생성
 		res = TEEC_InvokeCommand(&sess, TA_TEEencrypt_CMD_RANDOMKEY_GET, &op,  &err_origin);
+
     //생성한 랜덤키를 이용해 평문을 암호화
+		memcpy(op.params[0].tmpref.buffer, plaintext, len); //plaintext의 값을 메모리에 저장
 		res = TEEC_InvokeCommand(&sess, TA_TEEencrypt_CMD_ENC_VALUE, &op, &err_origin);
     // 에러 핸들링
   	if (res != TEEC_SUCCESS)
